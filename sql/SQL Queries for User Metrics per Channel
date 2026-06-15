@@ -1,0 +1,169 @@
+-- SECTION 1: USER METRICS PER CHANNEL
+-- Menghitung volume, frequency, recency, dan revenue per user
+-- dari semua 4 channel (WA, SMS, Email, Call)
+-- ============================================================
+ 
+WITH wa_metrics AS (
+  -- Kolom status: last_status | Charged: delivered, read | Uncharged: rejected, submitted
+  SELECT
+    user_id,
+    COUNT(*)                                                          AS wa_total_transactions,
+    COUNTIF(is_charge = TRUE)                                         AS wa_charged_transactions,
+    COUNTIF(last_status = 'delivered')                                AS wa_delivered,
+    COUNTIF(last_status = 'read')                                     AS wa_read,
+    COUNTIF(last_status = 'rejected')                                 AS wa_rejected,
+    COUNTIF(last_status = 'submitted')                                AS wa_submitted,
+    ROUND(SUM(CASE WHEN is_charge = TRUE THEN price ELSE 0 END), 2)  AS wa_total_revenue,
+    COUNT(DISTINCT DATE(created_at))                                  AS wa_active_days,
+    MAX(DATE(created_at))                                             AS wa_last_active,
+    MIN(DATE(created_at))                                             AS wa_first_active
+  FROM `xxxxxxxx`
+  GROUP BY user_id
+),
+ 
+sms_metrics AS (
+  -- Kolom status: message_status | Charged: sent | Uncharged: failed
+  SELECT
+    user_id,
+    COUNT(*)                                                                  AS sms_total_transactions,
+    COUNTIF(is_charge = TRUE)                                                 AS sms_charged_transactions,
+    COUNTIF(message_status = 'sent')                                          AS sms_sent,
+    COUNTIF(message_status = 'failed')                                        AS sms_failed,
+    ROUND(SUM(CASE WHEN is_charge = TRUE THEN total_price ELSE 0 END), 2)    AS sms_total_revenue,
+    SUM(total_sms)                                                            AS sms_total_messages,
+    COUNT(DISTINCT DATE(created_at))                                          AS sms_active_days,
+    MAX(DATE(created_at))                                                     AS sms_last_active,
+    MIN(DATE(created_at))                                                     AS sms_first_active
+  FROM `xxxxxxx.Sms`
+  GROUP BY user_id
+),
+ 
+email_metrics AS (
+  -- Kolom status: message_status | Charged: delivered, opened | Uncharged: clicked, processed, submitted, failed
+  SELECT
+    user_id,
+    COUNT(*)                                                                  AS email_total_transactions,
+    COUNTIF(is_charge = TRUE)                                                 AS email_charged_transactions,
+    COUNTIF(message_status = 'delivered')                                     AS email_delivered,
+    COUNTIF(message_status = 'opened')                                        AS email_opened,
+    COUNTIF(message_status = 'clicked')                                       AS email_clicked,
+    COUNTIF(message_status = 'processed')                                     AS email_processed,
+    COUNTIF(message_status = 'failed')                                        AS email_failed,
+    ROUND(SUM(CASE WHEN is_charge = TRUE THEN price ELSE 0 END), 2)          AS email_total_revenue,
+    COUNT(DISTINCT DATE(created_at))                                          AS email_active_days,
+    MAX(DATE(created_at))                                                     AS email_last_active,
+    MIN(DATE(created_at))                                                     AS email_first_active
+  FROM `xxxxxxxxxx.Email`
+  GROUP BY user_id
+),
+ 
+call_metrics AS (
+  -- Kolom status: message_status | Charged: answered | Uncharged: rna, failed
+  SELECT
+    user_id,
+    COUNT(*)                                                                  AS call_total_transactions,
+    COUNTIF(is_charge = TRUE)                                                 AS call_charged_transactions,
+    COUNTIF(message_status = 'answered')                                      AS call_answered,
+    COUNTIF(message_status = 'rna')                                           AS call_rna,
+    COUNTIF(message_status = 'failed')                                        AS call_failed,
+    ROUND(SUM(CASE WHEN is_charge = TRUE THEN total_price ELSE 0 END), 2)    AS call_total_revenue,
+    COUNT(DISTINCT DATE(created_at))                                          AS call_active_days,
+    MAX(DATE(created_at))                                                     AS call_last_active,
+    MIN(DATE(created_at))                                                     AS call_first_active
+  FROM `xxxxxxxxxxx.Call`
+  GROUP BY user_id
+),
+ 
+-- Gabungkan semua channel ke level user
+user_combined AS (
+  SELECT
+    u.user_id,
+    u.user_name,
+    u.field_of_business,
+    u.join_date,
+ 
+    -- WhatsApp metrics
+    COALESCE(w.wa_total_transactions, 0)    AS wa_total_transactions,
+    COALESCE(w.wa_charged_transactions, 0)  AS wa_charged_transactions,
+    COALESCE(w.wa_delivered, 0)             AS wa_delivered,
+    COALESCE(w.wa_read, 0)                  AS wa_read,
+    COALESCE(w.wa_rejected, 0)              AS wa_rejected,
+    COALESCE(w.wa_submitted, 0)             AS wa_submitted,
+    COALESCE(w.wa_total_revenue, 0)         AS wa_total_revenue,
+    COALESCE(w.wa_active_days, 0)           AS wa_active_days,
+    w.wa_last_active,
+ 
+    -- SMS metrics
+    COALESCE(s.sms_total_transactions, 0)   AS sms_total_transactions,
+    COALESCE(s.sms_charged_transactions, 0) AS sms_charged_transactions,
+    COALESCE(s.sms_sent, 0)                 AS sms_sent,
+    COALESCE(s.sms_failed, 0)               AS sms_failed,
+    COALESCE(s.sms_total_messages, 0)       AS sms_total_messages,
+    COALESCE(s.sms_total_revenue, 0)        AS sms_total_revenue,
+    COALESCE(s.sms_active_days, 0)          AS sms_active_days,
+    s.sms_last_active,
+ 
+    -- Email metrics
+    COALESCE(e.email_total_transactions, 0)   AS email_total_transactions,
+    COALESCE(e.email_charged_transactions, 0) AS email_charged_transactions,
+    COALESCE(e.email_delivered, 0)            AS email_delivered,
+    COALESCE(e.email_opened, 0)               AS email_opened,
+    COALESCE(e.email_clicked, 0)              AS email_clicked,
+    COALESCE(e.email_processed, 0)            AS email_processed,
+    COALESCE(e.email_failed, 0)               AS email_failed,
+    COALESCE(e.email_total_revenue, 0)        AS email_total_revenue,
+    COALESCE(e.email_active_days, 0)          AS email_active_days,
+    e.email_last_active,
+ 
+    -- Call metrics
+    COALESCE(c.call_total_transactions, 0)   AS call_total_transactions,
+    COALESCE(c.call_charged_transactions, 0) AS call_charged_transactions,
+    COALESCE(c.call_answered, 0)             AS call_answered,
+    COALESCE(c.call_rna, 0)                  AS call_rna,
+    COALESCE(c.call_failed, 0)               AS call_failed,
+    COALESCE(c.call_total_revenue, 0)        AS call_total_revenue,
+    COALESCE(c.call_active_days, 0)          AS call_active_days,
+    c.call_last_active,
+ 
+    -- Aggregated cross-channel metrics
+    COALESCE(w.wa_total_transactions, 0)
+      + COALESCE(s.sms_total_transactions, 0)
+      + COALESCE(e.email_total_transactions, 0)
+      + COALESCE(c.call_total_transactions, 0)  AS total_transactions,
+ 
+    COALESCE(w.wa_total_revenue, 0)
+      + COALESCE(s.sms_total_revenue, 0)
+      + COALESCE(e.email_total_revenue, 0)
+      + COALESCE(c.call_total_revenue, 0)       AS total_revenue,
+ 
+    -- Channel diversity: berapa channel yang aktif dipakai
+    (CASE WHEN COALESCE(w.wa_total_transactions, 0) > 0 THEN 1 ELSE 0 END
+      + CASE WHEN COALESCE(s.sms_total_transactions, 0) > 0 THEN 1 ELSE 0 END
+      + CASE WHEN COALESCE(e.email_total_transactions, 0) > 0 THEN 1 ELSE 0 END
+      + CASE WHEN COALESCE(c.call_total_transactions, 0) > 0 THEN 1 ELSE 0 END
+    ) AS channel_count,
+ 
+    -- Last active date across all channels
+    GREATEST(
+      COALESCE(w.wa_last_active, DATE '1900-01-01'),
+      COALESCE(s.sms_last_active, DATE '1900-01-01'),
+      COALESCE(e.email_last_active, DATE '1900-01-01'),
+      COALESCE(c.call_last_active, DATE '1900-01-01')
+    ) AS last_active_date,
+ 
+    -- Total active days across all channels
+    COALESCE(w.wa_active_days, 0)
+      + COALESCE(s.sms_active_days, 0)
+      + COALESCE(e.email_active_days, 0)
+      + COALESCE(c.call_active_days, 0) AS total_active_days
+ 
+  FROM `nextproject-001.TELKOM_OCA.Users` u
+  LEFT JOIN wa_metrics    w ON u.user_id = w.user_id
+  LEFT JOIN sms_metrics   s ON u.user_id = s.user_id
+  LEFT JOIN email_metrics e ON u.user_id = e.user_id
+  LEFT JOIN call_metrics  c ON u.user_id = c.user_id
+)
+ 
+SELECT * FROM user_combined
+ORDER BY total_revenue DESC;
+ 
